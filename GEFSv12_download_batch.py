@@ -20,9 +20,16 @@ from Download_GEFSv12_function import Download_GEFSv12_function
 #-----------------------------------------------------------
 #===================================================================
 outpath            = '/Volumes/Drobo2_RochelleW/Data/FireWxData/GEFSv12/025deg/perturbed/surface/3hrint_start0hr/'  #change to where you want to store the data
-var_directory_name = ['u10m','v10m','t2m','apcp','tcc','spfh','pres_sfc','weasd_sfc']                               #can keep the same or change to your own convention
-var_download_name  = ['ugrd_hgt','vgrd_hgt','tmp_2m','apcp_sfc','tcdc_eatm','spfh_2m','pres_sfc','weasd_sfc']       #update with variables you want to download
-optional_level     = ['10','10','None','None','None','None','None','None']                                          #update to correspond to levels of the variables in previous line
+var_download_name  = ['dswrf_sfc','ugrd_hgt','vgrd_hgt',                                      # direct predictors
+                      'hgt_hybr','pres_hybr','rh_hybr','tmp_hybr','ugrd_hybr','vgrd_hybr',    # hybrid levels predictors
+                      'pres_msl','ugrd_hgt','vgrd_hgt','hgt_ceiling','pwat_eatm','tcdc_eatm'] # indirect predictors
+optional_levels    = [None,100,100,
+                      [1,2,3,4],[1,2,3,4],[1,2,3,4],[1,2,3,4],[1,2,3,4],[1,2,3,4],
+                      None,10,10,None,None,None]
+var_directory_name = ['dswrf','u100m','v100m',
+                      'hgt_hybr','pres_hybr','rh_hybr','tmp_hybr','ugrd_hybr','vgrd_hybr',
+                      'pres_msl','u10m','v10m','hgt_ceiling','pwat','tcc']
+
 
 #Change index for the variable you want to download. ivar = 3 will download 'apcp' data
 ivar = 4
@@ -53,7 +60,7 @@ for idate in range(len(list_of_dates)):
     date_to   = date_from
 
     try:
-        Download_GEFSv12_function(outpath,var_directory_name[ivar],var_download_name[ivar],optional_level[ivar],date_from,date_to)
+        Download_GEFSv12_function(outpath,var_directory_name[ivar],var_download_name[ivar],optional_levels[ivar],date_from,date_to)
     except:
         print(' ')
         print('ERROR ' +'**** ' + date_to + ' ****' )
