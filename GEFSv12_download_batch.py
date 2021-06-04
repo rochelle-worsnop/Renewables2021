@@ -61,10 +61,8 @@ for idate in range(len(list_of_dates)):
 
     try:
         Download_GEFSv12_function(outpath,var_directory_name[ivar],var_download_name[ivar],optional_levels[ivar],date_from,date_to)
-    except:
-        print(' ')
-        print('ERROR ' +'**** ' + date_to + ' ****' )
-        print(' ')
+    except FileNotFoundError as err:
+        print("FileNotFoundError: {0}".format(err))
         continue  #try next date in the list
 
 #When you're done downloading, you should have 7305 files for Days1-10 (and 7305 files for Days10-16 if you requested those) for each variable!
