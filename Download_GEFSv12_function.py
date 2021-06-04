@@ -1,5 +1,6 @@
 #Created by: Joseph Bellier 
 #Modified by Rochelle Worsnop, 09/11/2020
+#Modified by Joseph Bellier, 6/3/2021, to read data at pressure/hybrid levels
 #Download GEFSv12 reforecasts from AWS
 import pygrib
 from netCDF4 import Dataset
@@ -27,8 +28,7 @@ def Download_GEFSv12_function(outpath,vardir,varname,lev,date_st,date_en):
     
     # Certains variables, like U and V winds, have different levels stored within the same GRIB files. In these case, the desired level must be provided.
     ##   If there is only one level (e.g., precipitation), the level can be set to None, and the only level available will be read.
-    optional_level = [lev,lev] 
-    
+    optional_levels = [lev,lev] 
     
     ## Bounds of the sub-area to keep the data over:
     bounds = [23.0, 51.0, -131, -63.0] #CONUS DOMAIN for the renewables project
@@ -69,8 +69,8 @@ def Download_GEFSv12_function(outpath,vardir,varname,lev,date_st,date_en):
     for v in range(nvars):
         name_var = name_vars[v]
         resol = resols[v]
-        level = optional_level[v]
-        
+        levels = optional_levels[v]
+        nlevels = 1 if (np.isscalar(levels) or levels is None) else len(levels)
         
         if resol == 'Days:1-10':
             leads = range(3, 240+1, 3)
@@ -113,22 +113,32 @@ def Download_GEFSv12_function(outpath,vardir,varname,lev,date_st,date_en):
             	#-------------------------------
             	
             	
-                ## If this is the first grib file downloaded for that variable/resol, we read the information such as the grid, the variable's long name, the unit...
+
+                ## If this is the first grib file downloaded for that variable/resol, we read from only 1 grib message the information such as the grid, the variable's long name, the unit...
                 if n == 0 and m == 0:
                     grbs = pygrib.open(path_bin_gribfiles + name_file)
                     
-                    ## To make sure we read the GRIB messages corresponding to the correct level:
+                    ## To make sure we read the GRIB messages corresponding to the correct level(s):
                     grb_all = grbs.read()
-                    levels_in_grib = list(set([str(grb.level) for grb in grb_all]))		
-                    if len(levels_in_grib) != 1:     # There is more than one level stored in this grib file
-                        if level is 'None' or level not in levels_in_grib:
-                            raise ValueError('There is more than one level stored in the GRIB files for the variable '+name_var+', but no level is provided, or the level provided does not match')
+                    levels_in_grib = list(set([grb.level for grb in grb_all]))		
+                    
+                    if nlevels == 1:   # There is only one level specified by the user (can be None)
+                        if len(levels_in_grib) != 1:     # There is more than one level stored in this grib file
+                            if levels is None or levels not in levels_in_grib:
+                                raise ValueError('There is more than one level stored in the GRIB files for the variable '+name_var+', but no level is provided, or the single level provided does not match')
+                            else:
+                                level = levels
                         else:
-                            level = int(level)
-                    else:
-                        level = int(levels_in_grib[0])
-	
-                    grb = grbs.select(level=level)[0]
+                            level = levels_in_grib[0]
+                        grb = grbs.select(level=level)[0]    
+                        
+                    else:             # There is more than one level specified in 'levels'
+                        ## Check that all desired levels are present in the GRIB file:
+                        for k in range(nlevels):
+                            if levels[k] not in levels_in_grib:
+                                raise ValueError('For the variable '+name_var+', level '+level[k]+' is provided, but it is not found in the GRIB file')
+                        grb = grbs.select(level=levels[0])[0]   # We select the first level to read the GRIB information from
+                        
                     
                     lats_mat_grib, lons_mat_grib = grb.latlons()
                     lats_grib, lons_grib = lats_mat_grib[:,0], lons_mat_grib[0,:]
@@ -141,34 +151,58 @@ def Download_GEFSv12_function(outpath,vardir,varname,lev,date_st,date_en):
                     lats, lons = lats_grib[id_lats], lons_grib[id_lons]
                     ny, nx = lats.size, lons.size
                     
-	
                     ## Variable long name and units:
                     longName_var  = grb.name
                     shortName_var = grb.shortName
                     units_var     = grb.parameterUnits
+                    if nlevels > 1:
+                        typeOfLevel_var = grb.typeOfLevel
+                        if typeOfLevel_var == 'isobaricInhPa':
+                            levelUnits_var = 'hPa'
+                            levelName_var = 'Isobaric surface'                        
+                            levelShortName_var = 'pressure'                        
+                        elif typeOfLevel_var == 'hybrid':
+                            levelUnits_var = 'sigma'
+                            levelName_var = 'Hybrid level'
+                            levelShortName_var = 'hybrid'
+                        else:
+                            raise ValueError("typeOfLevel in GRIB file is '"+typeOfLevel_var+"', but the current code doesn't read it")
                     
-                    ## Type of the variable: accumulated or instantaneous
+                    ## Type of the variable: accumulated, instantaneous or averaged
                     type_var = grb.stepTypeInternal
                     
                     ## Array where will be store the data:
-                    array_var = ma.array(np.zeros((ndates,nleads,nmembs,ny,nx)), dtype=np.float64, mask=True)
-                    
+                    if nlevels == 1: 
+                        array_var = ma.array(np.zeros((ndates,nleads,nmembs,ny,nx)), dtype=np.float64, mask=True)
+                    else:
+                        array_var = ma.array(np.zeros((ndates,nleads,nmembs,nlevels,ny,nx)), dtype=np.float64, mask=True)
+                        
             	
                 ## Read the data:
                 grbs = pygrib.open(path_bin_gribfiles + name_file) 
                 for l in range(nleads):   # We read the messages that corresponds to each lead time 
                 
-                    #Read in data from each lead time. This does not deaccumulate. 
-                    if (type_var == 'accum') or (type_var == 'avg'):
-                        lead_beg = leads[l] - 6 if (leads[l] % 6) == 0 else leads[l] - 3
-                        lead_end = leads[l]
-                        grb = grbs.select(level=level, startStep=lead_beg, endStep=lead_end)[0]
-                    elif type_var == 'instant':
-                        grb = grbs.select(level=level, forecastTime=leads[l])[0]
-                    else:
-                        print("ERROR: type_var unknown:, " + type_var)
-                        return
-                    array_var[n,l,m,:,:] = grb.values[id_lats,:][:,id_lons]
+                    for k in range(nlevels):    # And to each level
+                        if nlevels == 1:
+                            pass   # ('level' should have already been defined earlier)
+                        else:
+                            level = levels[k]
+                    
+                
+                        ## Read in data from each lead time. This does not deaccumulate. 
+                        if (type_var == 'accum') or (type_var == 'avg'):
+                            lead_beg = leads[l] - 6 if (leads[l] % 6) == 0 else leads[l] - 3
+                            lead_end = leads[l]
+                            grb = grbs.select(level=level, startStep=lead_beg, endStep=lead_end)[0]
+                        elif type_var == 'instant':
+                            grb = grbs.select(level=level, forecastTime=leads[l])[0]
+                        else:
+                            raise ValueError("type_var in GRIB file is '"+type_var+"', but the current code doesn't read it")
+
+                        if nlevels == 1:
+                            array_var[n,l,m,:,:] = grb.values[id_lats,:][:,id_lons]
+                        else:
+                            array_var[n,l,m,k,:,:] = grb.values[id_lats,:][:,id_lons]
 
           	
                 ## We finally delete the grib file since we don't need it anymore:
@@ -191,6 +225,8 @@ def Download_GEFSv12_function(outpath,vardir,varname,lev,date_st,date_en):
         Dlon_nc = nc.createDimension('lon',nx)
         Dens_nc = nc.createDimension('ens',nmembs)
         Dfhour_nc = nc.createDimension('fhour',nleads)
+        if nlevels > 1:
+            Dlevel_nc = nc.createDimension(levelShortName_var, nlevels)
         
         ## Create the variables
         latitude_nc = nc.createVariable('lat','f4',('lat',))
@@ -218,10 +254,20 @@ def Download_GEFSv12_function(outpath,vardir,varname,lev,date_st,date_en):
         fhour_nc = nc.createVariable('fhour','i4',('fhour',))
         fhour_nc.long_name = 'forecast hour'
         fhour_nc.units = 'hours'
-        
-        variable_nc = nc.createVariable(shortName_var,'f8',('time','fhour','ens','lat','lon',), zlib=True)
-        variable_nc.long_name = longName_var
-        variable_nc.units = units_var
+
+        if nlevels == 1:
+            variable_nc = nc.createVariable(shortName_var,'f8',('time','fhour','ens','lat','lon',), zlib=True)
+            variable_nc.long_name = longName_var
+            variable_nc.units = units_var
+            
+        else:
+            level_nc = nc.createVariable(levelShortName_var,'i4',(levelShortName_var,))
+            level_nc.long_name = levelName_var
+            level_nc.units = levelUnits_var
+
+            variable_nc = nc.createVariable(shortName_var,'f8',('time','fhour','ens',levelShortName_var,'lat','lon',), zlib=True)
+            variable_nc.long_name = longName_var +' @ '+levelShortName_var
+            variable_nc.units = units_var
         
         ## Writing data:
         latitude_nc[:] = lats
@@ -231,7 +277,11 @@ def Download_GEFSv12_function(outpath,vardir,varname,lev,date_st,date_en):
         time_init_nc[:] = time_init
         ens_nc[:] = membs
         fhour_nc[:] = leads
-        variable_nc[:,:,:,:,:] = array_var
+        if nlevels == 1:
+            variable_nc[:,:,:,:,:] = array_var
+        else:
+            level_nc[:] = levels
+            variable_nc[:,:,:,:,:,:] = array_var
         
         ## Attributes of the NetCDF:
         nc.title = 'Subset of GEFSv12 reforecasts for the variable '+longName_var+' over the area '+name_subArea
