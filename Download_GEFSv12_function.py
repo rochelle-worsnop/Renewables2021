@@ -109,7 +109,7 @@ def Download_GEFSv12_function(outpath,vardir,varname,lev,date_st,date_en):
                     cmd = 'wget -P '+path_bin_gribfiles+' '+url
                     istat = os.system(cmd)
                 if istat != 0:
-                    print('file '+cdate+'/'+cmemb+'/'+resol+'/'+name_file+' not found')
+                    raise FileNotFoundError('Trying to download '+cdate+'/'+cmemb+'/'+resol+'/'+name_file+' but the file is not found on AWS')
             	#-------------------------------
             	
             	
@@ -212,11 +212,16 @@ def Download_GEFSv12_function(outpath,vardir,varname,lev,date_st,date_en):
 
         ## Save the variable into a netCDF:
         #-----------------------------------------------------------
+        try:
+            os.makedirs(path_output_NetCDFs)
+        except FileExistsError:
+            pass
+
         if ndates > 1 :   #Include date range in file name
             ncfile = path_output_NetCDFs +name_var+'_'+str(yyyymmddhh_init[0])+'_'+str(yyyymmddhh_init[-1])+'_'+resol.replace(':','')+'.nc'
         else:
             ncfile = path_output_NetCDFs +name_var+'_'+str(yyyymmddhh_init[0])+'_'+resol.replace(':','')+'.nc'   #Just one date
-	
+    
         nc = Dataset(ncfile,'w',format='NETCDF4_CLASSIC')
         
         ## Create the dimensions:
