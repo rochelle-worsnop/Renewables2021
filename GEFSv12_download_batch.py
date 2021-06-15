@@ -43,6 +43,9 @@ var_directory_name = ['dswrf','u100m','v100m',
 
 ## Reslution of the forecasts: (choose between 'Days:1-10' and 'Days:10-16')
 resol = 'Days:1-10'
+
+## (optional) PSL location where some grib files may have already been downloaded
+pathExstFiles      = '/users/jbellier/Documents/Project_Renewable_energy/Dowloading_GEFSv12/bin3/'
 #===================================================================
 
 
@@ -73,7 +76,7 @@ for ivar in range(len(var_download_name)):
         date_to   = date_from
 
         try:
-            Download_GEFSv12_function(outpath,var_directory_name[ivar],var_download_name[ivar],optional_levels[ivar],resol,date_from,date_to,bounds)
+            Download_GEFSv12_function(outpath,var_directory_name[ivar],var_download_name[ivar],optional_levels[ivar],resol,date_from,date_to,bounds,pathExstFiles)
         except FileNotFoundError as err:
             print("FileNotFoundError: {0}".format(err))
             continue  #try next date in the list, but doesn't stop the script
