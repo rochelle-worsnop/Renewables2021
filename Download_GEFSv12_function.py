@@ -14,14 +14,14 @@ import os, sys
 
 ## User inputs:
 #-----------------------------------------------------------
-def Download_GEFSv12_function(outpath,vardir,name_var,levels,resol,date_st,date_en,bounds):
+def Download_GEFSv12_function(outpath, vardir, name_var,  levels, resol, date_st, date_en,  bounds, pathExstFiles=None):
     
     ## Where the output NetCDFs will be placed:
     path_output_NetCDFs = outpath + vardir + '/ncfiles/test/'  
     
     ## Where the grib files will be downloaded, and erased right after the desired area has been selected:
     path_bin_gribfiles = outpath + vardir + '/grb2files/test/' 
-        
+                
     ## Initialization dates: Define date range or make date_from & date_to the same date to download only one date. 
     date_from = date_st  
     date_to   = date_en 
@@ -79,27 +79,30 @@ def Download_GEFSv12_function(outpath,vardir,name_var,levels,resol,date_st,date_
             memb = membs[m]
             cmemb = 'c'+"{:0>2d}".format(memb) if m==0 else 'p'+"{:0>2d}".format(memb)
             name_file = name_var+'_'+str(yyyymmddhh_init[n])+'_'+cmemb+'.grib2'
+            
+            should_download = True
+            if pathExstFiles is not None:  # we try to find the file in the local archive
+                gribfile = pathExstFiles + str(yyyymmddhh_init[n]) +'/'+name_var+'_'+str(yyyymmddhh_init[n])+'_'+cmemb+'_'+str.replace(str.replace('Days:1-10','D','d'),'s:','')+'.grib2'
+                should_download = False if os.path.exists(gribfile) else True
 
-            ## We download the file from AWS:
-            ##   (if the grib files have already been downloaded we just need to adapt that part of the code)
-            #-------------------------------
-            url = 'https://noaa-gefs-retrospective.s3.amazonaws.com/GEFSv12/reforecast/'+cyear+'/'+cdate+'/'+cmemb+'/'+resol+'/'+name_file
-            cmd = 'wget -P '+path_bin_gribfiles+' '+url
-            istat = os.system(cmd)
-            ## Once a week the reforecasts go to 35 days, so the resol 'Days:10-16' is replaced by 'Days:10-35'
-            if istat != 0 and resol == 'Days:10-16':
-                url = 'https://noaa-gefs-retrospective.s3.amazonaws.com/GEFSv12/reforecast/'+cyear+'/'+cdate+'/'+cmemb+'/Days:10-35/'+name_file
+            if should_download == True:    # we download the file from AWS:
+                url = 'https://noaa-gefs-retrospective.s3.amazonaws.com/GEFSv12/reforecast/'+cyear+'/'+cdate+'/'+cmemb+'/'+resol+'/'+name_file
                 cmd = 'wget -P '+path_bin_gribfiles+' '+url
                 istat = os.system(cmd)
-            if istat != 0:
-                raise FileNotFoundError('Trying to download '+cdate+'/'+cmemb+'/'+resol+'/'+name_file+' but the file is not found on AWS')
-            #-------------------------------
+                ## Once a week the reforecasts go to 35 days, so the resol 'Days:10-16' is replaced by 'Days:10-35'
+                if istat != 0 and resol == 'Days:10-16':
+                    url = 'https://noaa-gefs-retrospective.s3.amazonaws.com/GEFSv12/reforecast/'+cyear+'/'+cdate+'/'+cmemb+'/Days:10-35/'+name_file
+                    cmd = 'wget -P '+path_bin_gribfiles+' '+url
+                    istat = os.system(cmd)
+                if istat != 0:
+                    raise FileNotFoundError('Trying to download '+cdate+'/'+cmemb+'/'+resol+'/'+name_file+' but the file is not found on AWS')
+                gribfile = path_bin_gribfiles + name_file
 
 
 
             ## If this is the first grib file downloaded for that variable/resol, we read from only 1 grib message the information such as the grid, the variable's long name, the unit...
             if n == 0 and m == 0:
-                grbs = pygrib.open(path_bin_gribfiles + name_file)
+                grbs = pygrib.open(gribfile)
 
                 ## To make sure we read the GRIB messages corresponding to the correct level(s):
                 grb_all = grbs.read()
@@ -162,7 +165,7 @@ def Download_GEFSv12_function(outpath,vardir,name_var,levels,resol,date_st,date_
 
 
             ## Read the data:
-            grbs = pygrib.open(path_bin_gribfiles + name_file) 
+            grbs = pygrib.open(gribfile) 
             for l in range(nleads):   # We read the messages that corresponds to each lead time 
 
                 for k in range(nlevels):    # And to each level
@@ -188,10 +191,10 @@ def Download_GEFSv12_function(outpath,vardir,name_var,levels,resol,date_st,date_
                         array_var[n,l,m,k,:,:] = grb.values[id_lats,:][:,id_lons]
 
 
-            ## We finally delete the grib file since we don't need it anymore:
-            #cmd = 'mv '+path_bin_gribfiles + name_file + '/Volumes/Drobo2_RochelleW/Data/FireWxData/GEFSv12/025deg/perturbed/surface/3hrint_start0hr/tcc/grb2files/test/'
-            cmd = 'rm '+path_bin_gribfiles + name_file
-            os.system(cmd)
+            ## We finally delete the grib file since we don't need it anymore (but only in the case it has just been downloaded):
+            if should_download == True:
+                cmd = 'rm '+path_bin_gribfiles + name_file
+                os.system(cmd)
 
     ## Save the variable into a netCDF:
     #-----------------------------------------------------------
