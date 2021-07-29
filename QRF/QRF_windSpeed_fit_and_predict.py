@@ -1,21 +1,14 @@
 from netCDF4 import Dataset, stringtochar, num2date, date2num, chartostring
-import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.datasets import load_boston
 from sklearn.model_selection import train_test_split
 from sklearn.model_selection import KFold
 from skgarden import RandomForestQuantileRegressor
 from datetime import datetime, timedelta
-import cartopy.crs as ccrs
-from cartopy.mpl.ticker import LongitudeFormatter, LatitudeFormatter
-import cartopy.feature as cfeature
-import copy
 from numpy import ma
-import math
-from scipy import stats
-import properscoring as ps
 import pandas as pd
 import os
+import warnings
 
 try:
     from numba import njit
@@ -31,6 +24,8 @@ except ImportError:
 ##      1. create a .bashrc file in the same location as this script: $ nano .bashrc
 ##      2. Add in this file the line: export HDF5_USE_FILE_LOCKING='FALSE'
 ##      3. Execute the command with: $ source .bashrc
+##   - Or simply:
+os.environ['HDF5_USE_FILE_LOCKING'] = 'FALSE'
 
 
 # ## User inputs, that are provided in the launch script:
@@ -276,7 +271,11 @@ for y_valid in range(nyear):
             obsERA5_train = obsERA5[y_train,:,j,i].reshape(ny_train*nday)
             
             ## QRF:
-            rfqr.fit(pred_train, obsERA5_train)
+            ## (we fit the QRF within a short environment where the FutureWarning are ignored. These warnings are generated because the argument `presort`
+            ##  is used in skgarden functions that call sklearn functions, but in sklearn it will be deprecated starting v0.24.)
+            with warnings.catch_warnings():
+                warnings.simplefilter(action='ignore', category=FutureWarning)
+                rfqr.fit(pred_train, obsERA5_train)
             fcstQRF[y_valid,:,j,i,:] = np.stack([rfqr.predict(pred_valid, quantile=quantile) for quantile in quantiles], axis=1)            
             fcstQRF_5memb[y_valid,:,j,i,:] = np.stack([rfqr.predict(pred_valid, quantile=quantile) for quantile in quantiles_5memb], axis=1)
             pred_importance[y_valid,j,i,:] = rfqr.feature_importances_
