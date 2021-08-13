@@ -104,6 +104,7 @@ def get_latLon_ERA5(ncfile, bounds_area, return_id_latLon=False):
     id_lats_era5 = np.where(np.logical_and(lats_era5 >= lb_lat, lats_era5 <= ub_lat))[0]
     lons_era5 = lons_era5[id_lons_era5]
     lats_era5 = lats_era5[id_lats_era5]
+    nc.close()
     if return_id_latLon == True:
         return lats_era5, lons_era5, id_lats_era5, id_lons_era5
     else:
